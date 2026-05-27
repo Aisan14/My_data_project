@@ -1,0 +1,15 @@
+logs/
+target/
+__pycache__/
+*.pyc
+
+.env
+
+.venv/
+venv/
+
+dbt_packages/
+
+airflow-webserver.pid
+
+*.log

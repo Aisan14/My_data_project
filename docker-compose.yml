@@ -1,0 +1,198 @@
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.7.2-python3.10
+
+  environment:
+    # Executor
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+
+    # Airflow DB
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+
+    # Celery
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow_db/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+
+    # FIX LOGS
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:8080
+    AIRFLOW__CORE__HOSTNAME_CALLABLE: socket.gethostname
+    AIRFLOW__CELERY__WORKER_LOG_SERVER_PORT: 8793
+
+    # Airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__LOGGING_LEVEL: INFO
+
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./data:/opt/airflow/data
+
+  networks:
+    - data_network
+
+  depends_on:
+    airflow_db:
+      condition: service_healthy
+
+    redis:
+      condition: service_healthy
+
+services:
+
+  # =========================
+  # ANALYTIC POSTGRES
+  # =========================
+  postgres_source:
+    image: postgres:15-alpine
+    container_name: postgres_source
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - pg_data_source:/var/lib/postgresql/data
+
+    networks:
+      - data_network
+
+    restart: unless-stopped
+
+  # =========================
+  # AIRFLOW DATABASE
+  # =========================
+  airflow_db:
+    image: postgres:13-alpine
+    container_name: airflow_db
+
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+
+    networks:
+      - data_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================
+  # REDIS
+  # =========================
+  redis:
+    image: redis:7-alpine
+    container_name: airflow_redis
+
+    networks:
+      - data_network
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================
+  # AIRFLOW WEBSERVER
+  # =========================
+  airflow-webserver:
+    <<: *airflow-common
+
+    container_name: airflow_webserver
+
+    command: webserver
+
+    ports:
+      - "8080:8080"
+
+    restart: always
+
+  # =========================
+  # AIRFLOW SCHEDULER
+  # =========================
+  airflow-scheduler:
+    <<: *airflow-common
+
+    container_name: airflow_scheduler
+
+    command: scheduler
+
+    restart: always
+
+  # =========================
+  # AIRFLOW WORKER
+  # =========================
+  airflow-worker:
+    <<: *airflow-common
+
+    container_name: airflow_worker
+
+    command: celery worker
+
+    ports:
+      - "8793:8793"
+
+    restart: always
+
+  # =========================
+  # AIRFLOW INIT
+  # =========================
+  airflow-init:
+    <<: *airflow-common
+
+    container_name: airflow_init
+
+    command: version
+
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow_db/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+
+      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:8080
+      AIRFLOW__CORE__HOSTNAME_CALLABLE: socket.gethostname
+      AIRFLOW__CELERY__WORKER_LOG_SERVER_PORT: 8793
+
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__CORE__LOGGING_LEVEL: INFO
+
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+
+    depends_on:
+      airflow_db:
+        condition: service_healthy
+
+# =========================
+# NETWORKS
+# =========================
+networks:
+  data_network:
+    name: data_network
+    driver: bridge
+
+# =========================
+# VOLUMES
+# =========================
+volumes:
+  pg_data_source:
+    driver: local
+
+  airflow_db_data:
+    driver: local

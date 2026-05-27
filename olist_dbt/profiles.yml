@@ -1,0 +1,13 @@
+olist_dbt:
+  target: dev
+
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      user: airflow_user
+      password: super_secure_password123
+      port: 5432
+      dbname: analytics_db
+      schema: public
+      threads: 4

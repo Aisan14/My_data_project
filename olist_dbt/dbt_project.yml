@@ -1,0 +1,23 @@
+name: 'olist_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'olist_dbt'
+
+model-paths: ["models"]
+
+models:
+
+  olist_dbt:
+
+    staging:
+      +schema: staging
+      +materialized: view
+
+    marts:
+      +schema: marts
+      +materialized: table
+
+    data_quality:
+      +schema: data_quality
+      +materialized: view
